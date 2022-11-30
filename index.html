@@ -25,7 +25,7 @@
 					alert("closed code:" + event.code + " reason:" +event.reason + " wasClean:"+event.wasClean);
 				};
 				socket.onmessage = function (event) {
-					var o=JSON.parse(event.data);
+					var o=JSON.parse(event.data).message;
 
 					var context = document.getElementById('canvas').getContext('2d');
 					context.fillStyle = 'rgb('+o.r+','+o.g+','+o.b+')';
@@ -40,14 +40,16 @@
 				// 	socket.send(JSON.stringify(o));
 				// });
 				$('#setForm').submit(function( event ) {
-					var o = { 'x': $('#x').val(), 
+					var o = {"action": "sendupdate", "message": { 
+						'x': $('#x').val(), 
 						'y': $('#y').val(), 
 						'r':$('#r').val(), 
 						'g':$('#g').val(), 
-						'b':$('#b').val()};
+						'b':$('#b').val()}
+					};
 
-					for(var key in o){
-						o[key]=parseInt(o[key]);
+					for(var key in o["message"]){
+						o["message"][key]=parseInt(o["message"][key]);
 					}
 					socket.send(JSON.stringify(o));
   					event.preventDefault();
