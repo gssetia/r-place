@@ -25,12 +25,12 @@
 					alert("closed code:" + event.code + " reason:" +event.reason + " wasClean:"+event.wasClean);
 				};
 				socket.onmessage = function (event) {
-					console.log(event.data)
-					var o=JSON.parse(event.data).message;
-
+					var o=JSON.parse(event.data);
+					console.log("o.message:" + o.message)
+					// var o = event.data
 					var context = document.getElementById('canvas').getContext('2d');
-					context.fillStyle = 'rgb('+o.r+','+o.g+','+o.b+')';
-		   			context.fillRect(o.x, o.y, 1, 1);
+					context.fillStyle = 'rgb('+o.message.r+','+o.message.g+','+o.message.b+')';
+		   			context.fillRect(o.message.x, o.message.y, 10, 10);
 				}
 
 				// Comment out the event handler below when in production
