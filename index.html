@@ -25,6 +25,7 @@
 					alert("closed code:" + event.code + " reason:" +event.reason + " wasClean:"+event.wasClean);
 				};
 				socket.onmessage = function (event) {
+					console.log(event.data)
 					var o=JSON.parse(event.data).message;
 
 					var context = document.getElementById('canvas').getContext('2d');
@@ -40,6 +41,7 @@
 				// 	socket.send(JSON.stringify(o));
 				// });
 				$('#setForm').submit(function( event ) {
+					console.log("hello")
 					var o = {"action": "sendupdate", "message": { 
 						'x': $('#x').val(), 
 						'y': $('#y').val(), 
@@ -51,6 +53,7 @@
 					for(var key in o["message"]){
 						o["message"][key]=parseInt(o["message"][key]);
 					}
+					console.log(o)
 					socket.send(JSON.stringify(o));
   					event.preventDefault();
 				});
