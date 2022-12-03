@@ -32,23 +32,23 @@
 					var r = 0;
 					var g = 0;
 					var b = 0;
-					if (color == "Black") {
+					if (color == 7) {//black
 						r = 255;
 						g = 255;
 						b = 255;
-					} else if (color == "Red") {
+					} else if (color == 1) {//red
 						r = 255;
-					} else if (color == "Green") {
+					} else if (color == 4) {//green
 						g = 255;
-					} else if (color == "Blue") {
+					} else if (color == 5) {//blue
 						b = 255;
-					} else if (color == "Orange") {
+					} else if (color == 2) { //orange
 						r = 255;
 						g = 165;
-					} else if (color == "Yellow") {
+					} else if (color == 3) { //yellow
 						r = 255;
 						g = 255;
-					} else if (color == "Purple") {
+					} else if (color == 6) {//purple
 						r = 255;
 						b = 255;
 					}
@@ -63,8 +63,9 @@
 						'color':$('#colors').val()
 						}
 					};
-					o["message"]['x']=parseInt(o["message"]['x']);
-					o["message"]['y']=parseInt(o["message"]['y']);
+					for(var key in o["message"]){
+						o["message"][key]=parseInt(o["message"][key]);
+					}
 					$.fn.setPixel(o["message"]['x'], o["message"]['y'], o["message"]['color'] )
 					socket.send(JSON.stringify(o));
   					event.preventDefault();
@@ -94,14 +95,14 @@
                         <input type="number" id="y" placeholder="y" min="0" max="250">)
                         &nbsp; &nbsp; &nbsp;
 						(<select name="colors" id="colors">
-							<option value="Red">Red</option>
-							<option value="Orange">Orange</option>
-							<option value="Yellow">Yellow</option>
-							<option value="Green">Green</option>
-							<option value="Blue">Blue</option>
-							<option value="Purple">Purple</option>
-							<option value="White">White</option>
-							<option value="Black">Black</option>
+							<option value="1">Red</option>
+							<option value="2">Orange</option>
+							<option value="3">Yellow</option>
+							<option value="4">Green</option>
+							<option value="5">Blue</option>
+							<option value="6">Purple</option>
+							<option value="0">White</option>
+							<option value="7">Black</option>
 						  </select>)
                         &nbsp; &nbsp; &nbsp;
                         <input type="submit" name="set" value="set"/>
