@@ -14,12 +14,9 @@
 			var socket;
 
 			$(function(){
-				// socket = new WebSocket("ws://cslinux.utm.utoronto.ca:8001");
-				// socket = new WebSocket("ws://localhost:8001");
 				socket = new WebSocket(" wss://21vsx3848b.execute-api.us-east-1.amazonaws.com/production");
 				socket.onopen = function (event) {
 					$('#sendButton').removeAttr('disabled');
-					console.log("connected");
 				};
 				socket.onclose = function (event) {
 					alert("closed code:" + event.code + " reason:" +event.reason + " wasClean:"+event.wasClean);
@@ -27,33 +24,48 @@
 				socket.onmessage = function (event) {
 					var o=JSON.parse(event.data);
 					console.log("o.message:" + o.message)
-					// var o = event.data
-					var context = document.getElementById('canvas').getContext('2d');
-					context.fillStyle = 'rgb('+o.message.r+','+o.message.g+','+o.message.b+')';
-		   			context.fillRect(o.message.x, o.message.y, 10, 10);
+					$.fn.setPixel(o.message.x, o.message.y, o.message.color)
 				}
 
-				// Comment out the event handler below when in production
-				// $('#canvas').mousemove(function(event){
-				// 	var x=event.pageX-this.offsetLeft;
-				// 	var y=event.pageY-this.offsetTop;
-				// 	var o = { 'x': x, 'y': y, 'r': 0, 'g':0, 'b':0 };
-				// 	socket.send(JSON.stringify(o));
-				// });
+				$.fn.setPixel = function(x, y, color){ 
+					var context = document.getElementById('canvas').getContext('2d');
+					var r = 0;
+					var g = 0;
+					var b = 0;
+					if (color == "Black") {
+						r = 255;
+						g = 255;
+						b = 255;
+					} else if (color == "Red") {
+						r = 255;
+					} else if (color == "Green") {
+						g = 255;
+					} else if (color == "Blue") {
+						b = 255;
+					} else if (color == "Orange") {
+						r = 255;
+						g = 165;
+					} else if (color == "Yellow") {
+						r = 255;
+						g = 255;
+					} else if (color == "Purple") {
+						r = 255;
+						b = 255;
+					}
+					context.fillStyle = 'rgb('+r+','+g+','+b+')';
+		   			context.fillRect(x, y, 10, 10);
+    			}
+
 				$('#setForm').submit(function( event ) {
-					console.log("hello")
 					var o = {"action": "sendupdate", "message": { 
 						'x': $('#x').val(), 
 						'y': $('#y').val(), 
-						'r':$('#r').val(), 
-						'g':$('#g').val(), 
-						'b':$('#b').val()}
+						'color':$('#colors').val()
+						}
 					};
-
-					for(var key in o["message"]){
-						o["message"][key]=parseInt(o["message"][key]);
-					}
-					console.log(o)
+					o["message"]['x']=parseInt(o["message"]['x']);
+					o["message"]['y']=parseInt(o["message"]['y']);
+					$.fn.setPixel(o["message"]['x'], o["message"]['y'], o["message"]['color'] )
 					socket.send(JSON.stringify(o));
   					event.preventDefault();
 				});
@@ -81,9 +93,16 @@
                         (<input type="number" id="x" placeholder="x" min="0" max="250">,
                         <input type="number" id="y" placeholder="y" min="0" max="250">)
                         &nbsp; &nbsp; &nbsp;
-                        (<input type="number" id="r" placeholder="r" min="0" max="255">,
-                        <input type="number"  id="g" placeholder="g" min="0" max="255">,
-                        <input type="number"  id="b" placeholder="b" min="0" max="255">)
+						(<select name="colors" id="colors">
+							<option value="Red">Red</option>
+							<option value="Orange">Orange</option>
+							<option value="Yellow">Yellow</option>
+							<option value="Green">Green</option>
+							<option value="Blue">Blue</option>
+							<option value="Purple">Purple</option>
+							<option value="White">White</option>
+							<option value="Black">Black</option>
+						  </select>)
                         &nbsp; &nbsp; &nbsp;
                         <input type="submit" name="set" value="set"/>
                 </form>
