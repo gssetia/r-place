@@ -66,7 +66,7 @@
 					for(var key in o["message"]){
 						o["message"][key]=parseInt(o["message"][key]);
 					}
-					$.fn.setPixel(o["message"]['x'], o["message"]['y'], o["message"]['color'] )
+// 					$.fn.setPixel(o["message"]['x'], o["message"]['y'], o["message"]['color'] )
 					socket.send(JSON.stringify(o));
   					event.preventDefault();
 				});
