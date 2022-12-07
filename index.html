@@ -17,37 +17,37 @@
 		$(function () {
 			socket = new WebSocket(" wss://21vsx3848b.execute-api.us-east-1.amazonaws.com/production");
 			socket.onopen = function (event) {
-				$('#sendButton').removeAttr('disabled');
-				console.log("connected");
-				var o = { "action": "board" };
-				socket.send(JSON.stringify(o));
-				event.preventDefault();
+				fetch('https://a6ppx0c1n6.execute-api.us-east-1.amazonaws.com/production')
+					.then(response => { return response.json() })
+					.then(function (data) {
+						var nums = data.Data;
+						var b = Object.values(nums)
+						var x = 0;
+						var y = 0;
+						console.log("loading board")
+						for (var i = 0; i < 500000; i++) {
+							var color1 = b[1][i] >> 4 & 0x1F;
+							var color2 = b[1][i] & ~(~0 << 4);
+							$.fn.setPixel(x, y, color1)
+							x += 1;
+							if (x == 1000) { y += 1 }
+							x = x % 1000;
+							$.fn.setPixel(x, y, color2)
+							x += 1;
+							if (x == 1000) { y += 1 }
+							x = x % 1000;
+						}
+						console.log("done loading board")
+					})
 			};
 			socket.onclose = function (event) {
 				alert("closed code:" + event.code + " reason:" + event.reason + " wasClean:" + event.wasClean);
 			};
 			socket.onmessage = function (event) {
-				try {
-					var o = JSON.parse(event.data);
-					$.fn.setPixel(o.message.x, o.message.y, o.message.color)
-				} catch (err) {
-					var x = 0;
-					var y = 0;
-					let utf8Encode = new TextEncoder();
-					var nums = utf8Encode.encode(event.data);
-					for (var num = 0; num < 11250; num++) {
-						var color1 = nums[num] >> 4 & 0x1F;
-						var color2 = nums[num] & ~(~0 << 4);
-						$.fn.setPixel(x, y, color1)
-						x += 1;
-						if (x == 150) { y += 1 }
-						x = x % 150;
-						$.fn.setPixel(x, y, color2)
-						x += 1;
-						if (x == 150) { y += 1 }
-						x = x % 150;
-					}
-				}
+				console.log("trying")
+				var o = JSON.parse(event.data);
+				$.fn.setPixel(o.message.x, o.message.y, o.message.color)
+				console.log("tried")
 			}
 
 			$.fn.setPixel = function (x, y, color) {
@@ -90,7 +90,12 @@
 				for (var key in o["message"]) {
 					o["message"][key] = parseInt(o["message"][key]);
 				}
-				socket.send(JSON.stringify(o));
+				console.log("sending")
+				try {
+					socket.send(JSON.stringify(o));
+				} catch (err) {
+					console.log(err)
+				}
 				event.preventDefault();
 			});
 		});
@@ -117,10 +122,10 @@
 <body>
 	<h1>r/place clone</h1>
 
-	<canvas id="canvas" width="150" height="150"></canvas>
+	<canvas id="canvas" width="1000" height="1000"></canvas>
 	<form id="setForm">
-		(<input type="number" id="x" placeholder="x" min="0" max="149">,
-		<input type="number" id="y" placeholder="y" min="0" max="149">)
+		(<input type="number" id="x" placeholder="x" min="0" max="999">,
+		<input type="number" id="y" placeholder="y" min="0" max="999">)
 		&nbsp; &nbsp; &nbsp;
 		(<select name="colors" id="colors">
 			<option value="1">Red</option>
