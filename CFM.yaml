@@ -1,0 +1,932 @@
+Mappings:
+  SubnetConfig:
+    VPC:
+      CIDR: '10.0.0.0/16'
+    Private1:
+      CIDR: '10.0.0.0/24'
+    Private2:
+      CIDR: '10.0.1.0/24'
+    Lambda1:
+      CIDR: '10.0.2.0/24'
+    Lambda2:
+      CIDR: '10.0.3.0/24'
+    Public1:
+      CIDR: '10.0.4.0/24'
+Resources:
+  Clients:
+    Type: 'AWS::DynamoDB::Table'
+    Properties:
+      KeySchema:
+        - AttributeName: connectionId
+          KeyType: HASH
+      AttributeDefinitions:
+        - AttributeName: connectionId
+          AttributeType: S
+      ProvisionedThroughput:
+        ReadCapacityUnits: 5
+        WriteCapacityUnits: 5
+    UpdateReplacePolicy: Delete
+    DeletionPolicy: Delete
+  Requests:
+    Type: 'AWS::DynamoDB::Table'
+    Properties:
+      KeySchema:
+        - AttributeName: connectionIp
+          KeyType: HASH
+      AttributeDefinitions:
+        - AttributeName: connectionIp
+          AttributeType: S
+      ProvisionedThroughput:
+        ReadCapacityUnits: 5
+        WriteCapacityUnits: 5
+    UpdateReplacePolicy: Delete
+    DeletionPolicy: Delete
+  rplace2:
+    Type: AWS::Amplify::App
+    Properties:
+      AccessToken: ""
+      Name: rplace2
+      Platform: "WEB" 
+      Repository: "https://github.com/gssetia/r-place" 
+  ConnectHandlerServiceRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action: 'sts:AssumeRole'
+            Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+        Version: 2012-10-17
+      ManagedPolicyArns:
+        - !Join 
+          - ''
+          - - 'arn:'
+            - !Ref 'AWS::Partition'
+            - ':iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
+  ConnectHandlerServiceRoleDefaultPolicy:
+    Type: 'AWS::IAM::Policy'
+    Properties:
+      PolicyDocument:
+        Statement:
+          - Action:
+              - 'dynamodb:BatchWriteItem'
+              - 'dynamodb:PutItem'
+              - 'dynamodb:UpdateItem'
+              - 'dynamodb:DeleteItem'
+            Effect: Allow
+            Resource:
+              - !GetAtt 
+                - Clients
+                - Arn
+              - !GetAtt
+                - Requests
+                - Arn
+              - !Ref 'AWS::NoValue'
+        Version: 2012-10-17
+      PolicyName: ConnectHandlerServiceRoleDefaultPolicy
+      Roles:
+        - !Ref ConnectHandlerServiceRole
+  ConnectHandler:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      Code:
+        ZipFile: |-
+          const AWS = require('aws-sdk');
+          const ddb = new AWS.DynamoDB.DocumentClient();
+          exports.handler = async function (event, context) {
+            try {
+              await ddb
+                .put({
+                  TableName: process.env.table,
+                  Item: {
+                    connectionId: event.requestContext.connectionId,
+                    connectionIp: event.requestContext.identity.sourceIp,
+                  },
+                })
+                .promise();
+            } catch (err) {
+              console.log(err)
+              return {
+                statusCode: 500,
+              };
+            }
+            try {
+              await ddb
+                .put({
+                  TableName: process.env.requests,
+                  Item: {
+                    connectionIp: event.requestContext.identity.sourceIp,
+                    time: event.requestContext.requestTime,
+                    lastRequest: 1,
+                  },
+                  ConditionExpression: "attribute_not_exists(connectionIp)",
+                })
+                .promise();
+            } catch (err) {
+                console.log("Connection already exists")
+            }
+            return {
+              statusCode: 200,
+            };
+          };
+      Role: !GetAtt 
+        - ConnectHandlerServiceRole
+        - Arn
+      Environment:
+        Variables:
+          table: !Ref Clients
+          requests: !Ref Requests
+      Handler: index.handler
+      Runtime: nodejs14.x
+    DependsOn:
+      - ConnectHandlerServiceRoleDefaultPolicy
+      - ConnectHandlerServiceRole
+  DisconnectHandlerServiceRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action: 'sts:AssumeRole'
+            Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+        Version: 2012-10-17
+      ManagedPolicyArns:
+        - !Join 
+          - ''
+          - - 'arn:'
+            - !Ref 'AWS::Partition'
+            - ':iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
+  DisconnectHandlerServiceRoleDefaultPolicy:
+    Type: 'AWS::IAM::Policy'
+    Properties:
+      PolicyDocument:
+        Statement:
+          - Action:
+              - 'dynamodb:BatchWriteItem'
+              - 'dynamodb:PutItem'
+              - 'dynamodb:UpdateItem'
+              - 'dynamodb:DeleteItem'
+            Effect: Allow
+            Resource:
+              - !GetAtt 
+                - Clients
+                - Arn
+              - !Ref 'AWS::NoValue'
+        Version: 2012-10-17
+      PolicyName: DisconnectHandlerServiceRoleDefaultPolicy
+      Roles:
+        - !Ref DisconnectHandlerServiceRole
+  DisconnectHandler:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      Code:
+        ZipFile: |-
+          const AWS = require('aws-sdk');
+                const ddb = new AWS.DynamoDB.DocumentClient();
+                
+                exports.handler = async function (event, context) {
+                  await ddb
+                    .delete({
+                      TableName: process.env.table,
+                      Key: {
+                        connectionId: event.requestContext.connectionId,
+                      },
+                    })
+                    .promise();
+                  return {
+                    statusCode: 200,
+                  };
+                };
+      Role: !GetAtt 
+        - DisconnectHandlerServiceRole
+        - Arn
+      Environment:
+        Variables:
+          table: !Ref Clients
+      Handler: index.handler
+      Runtime: nodejs14.x
+    DependsOn:
+      - DisconnectHandlerServiceRoleDefaultPolicy
+      - DisconnectHandlerServiceRole
+  MessageHandlerServiceRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action: 'sts:AssumeRole'
+            Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+        Version: 2012-10-17
+      ManagedPolicyArns:
+        - !Join 
+          - ''
+          - - 'arn:'
+            - !Ref 'AWS::Partition'
+            - ':iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
+  MessageHandlerServiceRoleDefaultPolicy:
+    Type: 'AWS::IAM::Policy'
+    Properties:
+      PolicyDocument:
+        Statement:
+          - Action:
+              - 'dynamodb:*'
+            Effect: Allow
+            Resource:
+              - !GetAtt 
+                - Clients
+                - Arn
+              - !GetAtt
+                - Requests
+                - Arn
+              - !Ref 'AWS::NoValue'
+        Version: 2012-10-17
+      PolicyName: MessageHandlerServiceRoleDefaultPolicy
+      Roles:
+        - !Ref MessageHandlerServiceRole
+  SendMessageHandler:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      Code:
+        ZipFile: |-
+          const AWS = require('aws-sdk');
+          const { LambdaClient, InvokeCommand } = require("@aws-sdk/client-lambda");
+
+          const client = new LambdaClient({ region: "us-east-1" });
+
+          const ddb = new AWS.DynamoDB.DocumentClient();
+          exports.handler = async function (event, context) {
+            let connections;
+            let requests;
+            let wait = false;
+            let epoch = event.requestContext.requestTimeEpoch;
+            const message = event.body;
+            try {
+              connections = await ddb.scan({ TableName: process.env.table }).promise();
+              requests = await ddb.scan({ TableName: process.env.requests }).promise();
+            } catch (err) {
+              return {
+                statusCode: 500,
+              };
+            }
+            
+            requests.Items.map(async ({ connectionIp, lastRequest }) => {
+              console.log("nums", epoch, lastRequest, connectionIp, event.requestContext.identity.sourceIp);
+              if (connectionIp === event.requestContext.identity.sourceIp) {
+                // 300000 = 60000 miliseconds * 5 min
+                if (epoch - lastRequest < 300000 ) {
+                  wait = true;
+                }else{
+                  const params = {
+                  TableName: process.env.requests,
+                  Key: {
+                    connectionIp: connectionIp,
+                    },
+                    ExpressionAttributeNames: { '#T': 'lastRequest' },
+                    UpdateExpression: "set #T = :T",
+                    ExpressionAttributeValues: {
+                      ':T': epoch,
+                    }
+                  };
+                  try {
+                    
+                    ddb.update(params, function(err, data) {
+                       if (err) console.log(err);
+                       else console.log("Result: ", data);
+                    });
+                    console.log("updated");
+                    const command = new InvokeCommand({
+                        FunctionName: "updateBoard",
+                        Payload: message
+                    });
+                    const response = await client.send(command);
+                    print(response)
+                  } catch (err) {
+                    return {
+                      statusCode: 500,
+                    };
+                  }
+                }
+
+              }
+              
+            });
+            
+            const callbackAPI = new AWS.ApiGatewayManagementApi({
+              apiVersion: '2018-11-29',
+              endpoint:
+                event.requestContext.domainName + '/' + event.requestContext.stage,
+            });
+
+            if (!wait) {
+              const sendMessages = connections.Items.map(async ({ connectionId }) => {
+                try {
+                  console.log(connectionId, message)
+                  await callbackAPI
+                    .postToConnection({ ConnectionId: connectionId, Data: message })
+                    .promise();
+                } catch (e) {
+                  console.log(e);
+                }
+              });
+              try {
+                await Promise.all(sendMessages);
+              } catch (e) {
+                console.log(e);
+                return {
+                  statusCode: 500,
+                };
+              }
+            }
+
+            return { statusCode: 200 };
+          };
+      Role: !GetAtt 
+        - MessageHandlerServiceRole
+        - Arn
+      Environment:
+        Variables:
+          table: !Ref Clients
+          requests: !Ref Requests
+      Handler: index.handler
+      Runtime: nodejs14.x
+    DependsOn:
+      - MessageHandlerServiceRoleDefaultPolicy
+      - MessageHandlerServiceRole
+  DefaultHandlerServiceRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action: 'sts:AssumeRole'
+            Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+        Version: 2012-10-17
+      ManagedPolicyArns:
+        - !Join 
+          - ''
+          - - 'arn:'
+            - !Ref 'AWS::Partition'
+            - ':iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
+  DefaultHandlerServiceRoleDefaultPolicy:
+    Type: 'AWS::IAM::Policy'
+    Properties:
+      PolicyDocument:
+        Statement:
+          - Action: 'execute-api:ManageConnections'
+            Effect: Allow
+            Resource: !Join 
+              - ''
+              - - 'arn:aws:execute-api:'
+                - !Ref 'AWS::Region'
+                - ':'
+                - !Ref 'AWS::AccountId'
+                - ':*/*/POST/@connections/*'
+          - Action: 'execute-api:ManageConnections'
+            Effect: Allow
+            Resource: !Join 
+              - ''
+              - - 'arn:aws:execute-api:'
+                - !Ref 'AWS::Region'
+                - ':'
+                - !Ref 'AWS::AccountId'
+                - ':*/*/GET/@connections/*'
+        Version: 2012-10-17
+      PolicyName: DefaultHandlerServiceRoleDefaultPolicy
+      Roles:
+        - !Ref DefaultHandlerServiceRole
+  DefaultHandler:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      Code:
+        ZipFile: |-
+          const AWS = require('aws-sdk');
+
+                exports.handler = async function (event, context) {
+                  let connectionInfo;
+                  let connectionId = event.requestContext.connectionId;
+                
+                  const callbackAPI = new AWS.ApiGatewayManagementApi({
+                    apiVersion: '2018-11-29',
+                    endpoint:
+                      event.requestContext.domainName + '/' + event.requestContext.stage,
+                  });
+                
+                  try {
+                    connectionInfo = await callbackAPI
+                      .getConnection({ ConnectionId: event.requestContext.connectionId })
+                      .promise();
+                  } catch (e) {
+                    console.log(e);
+                  }
+                
+                  connectionInfo.connectionID = connectionId;
+                
+                  await callbackAPI
+                    .postToConnection({
+                      ConnectionId: event.requestContext.connectionId,
+                      Data:
+                        'Use the sendupdate route to send a message. Your info:' +
+                        JSON.stringify(connectionInfo),
+                    })
+                    .promise();
+                
+                  return {
+                    statusCode: 200,
+                  };
+                };
+      Role: !GetAtt 
+        - DefaultHandlerServiceRole
+        - Arn
+      Handler: index.handler
+      Runtime: nodejs14.x
+    DependsOn:
+      - DefaultHandlerServiceRoleDefaultPolicy
+      - DefaultHandlerServiceRole
+  manageConnections:
+    Type: 'AWS::IAM::Policy'
+    Properties:
+      PolicyDocument:
+        Statement:
+          - Action: 'execute-api:ManageConnections'
+            Effect: Allow
+            Resource: !Join 
+              - ''
+              - - 'arn:aws:execute-api:'
+                - !Ref 'AWS::Region'
+                - ':'
+                - !Ref 'AWS::AccountId'
+                - ':*/*/POST/@connections/*'
+        Version: 2012-10-17
+      PolicyName: manageConnections
+      Roles:
+        - !Ref MessageHandlerServiceRole
+  BoardHandlerServiceRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action: 'sts:AssumeRole'
+            Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+        Version: 2012-10-17
+      ManagedPolicyArns:
+        - !Join 
+          - ''
+          - - 'arn:'
+            - !Ref 'AWS::Partition'
+            - ':iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
+  InvokeOtherLambdaPolicy:
+    Type: 'AWS::IAM::Policy'
+    Properties:
+      PolicyDocument:
+        Statement:
+          - Action: 'lambda:InvokeFunction'
+            Effect: Allow
+            Resource: '*'
+              - !GetAtt
+                - getBoard
+                - Arn
+              - !GetAtt
+                - updateBoard
+                - Arn
+        Version: 2012-10-17
+      PolicyName: BoardHandlerServiceRoleDefaultPolicy
+      Roles:
+        - !Ref BoardHandlerServiceRole
+        - !Ref UpdateBoardServiceRole
+  BoardHandler:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      Code:
+        ZipFile: |-
+          const AWS = require('aws-sdk');
+          const { LambdaClient, InvokeCommand } = require("@aws-sdk/client-lambda");
+
+          const client = new LambdaClient({ region: "us-east-1" });
+          const command = new InvokeCommand({
+              FunctionName: "getBoard"
+          });
+
+          exports.handler = async function (event, context) {
+              const response = await client.send(command);
+              const buffer = Buffer.from(Object.values(response.Payload));
+              return {
+                  statusCode: 200,
+                  Data: buffer
+              };
+          }    
+      Role: !GetAtt 
+        - BoardHandlerServiceRole
+        - Arn
+      Handler: index.handler
+      Runtime: nodejs14.x
+    DependsOn:
+      - BoardHandlerServiceRole
+  GetBoardServiceRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action: 'sts:AssumeRole'
+            Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+        Version: 2012-10-17
+      ManagedPolicyArns:
+        - !Join 
+          - ''
+          - - 'arn:'
+            - !Ref 'AWS::Partition'
+            - ':iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
+  ConnectToVPCPolicy:
+    Type: 'AWS::IAM::Policy'
+    Properties:
+      PolicyDocument:
+        Statement:
+          - Action: 
+            - 'ec2:DescribeNetworkInterfaces'
+            - 'ec2:CreateNetworkInterface'
+            - 'ec2:DeleteNetworkInterface'
+            - 'ec2:DescribeInstances'
+            - 'ec2:AttachNetworkInterface'
+            Effect: Allow
+            Resource: '*'
+        Version: 2012-10-17
+      PolicyName: ConnectToVPCPolicy
+      Roles:
+        - !Ref GetBoardServiceRole
+  getBoard:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      Code:
+        ZipFile: |-
+          import redis
+          r = redis.Redis(host="redis-rplace.yzihiy.ng.0001.use1.cache.amazonaws.com", port=6379)
+          def handler(event, context):
+              return r.get("board") 
+      Role: !GetAtt 
+        - GetBoardServiceRole
+        - Arn
+      Handler: index.handler
+      Runtime: python3.9
+      VpcConfig:
+        SecurityGroupIds:
+          - sg-0d5024f885003749b
+        SubnetIds:
+          - subnet-02ec56712dea7c801
+          - subnet-054b409e68da2896c
+    DependsOn:
+      - GetBoardServiceRole
+      - ConnectToVPCPolicy
+  updateBoard:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      Code:
+        ZipFile: |-
+          import json
+          import redis
+          r = redis.Redis(host="redis-rplace.yzihiy.ng.0001.use1.cache.amazonaws.com", port=6379)
+
+          def handler(event, context):
+              obj = json.loads(json.dumps(event))['message']
+              offset = (obj['y'] * 4000) + (obj['x'] * 4)
+              color = obj['color']
+
+              for b in f'{color:04b}':
+                  r.setbit("board", offset, int(b))
+                  offset = offset + 1
+      Role: !GetAtt 
+        - GetBoardServiceRole
+        - Arn
+      Handler: index.handler
+      Runtime: python3.9
+      VpcConfig:
+        SecurityGroupIds:
+          - sg-0d5024f885003749b
+        SubnetIds:
+          - subnet-02ec56712dea7c801
+          - subnet-054b409e68da2896c
+    DependsOn:
+      - GetBoardServiceRole
+      - ConnectToVPCPolicy
+  # ReplicationGroup:
+    # Type: 'AWS::ElastiCache::ReplicationGroup'
+    # Properties:
+    #   NumCacheClusters: '3'
+    #   Engine: redis
+    #   CacheNodeType: cache.t3.micro    
+    #   AutomaticFailoverEnabled: 'true'
+    #   CacheSubnetGroupName: RedisSubnetGroup
+    #   EngineVersion: 7.0.4
+    #   SecurityGroupIds:
+    #   - !Ref RedisSecurityGroup
+  # RedisSubnetGroup:
+  #   Type: AWS::ElastiCache::SubnetGroup
+  #   Properties:
+  #     # Description: Redis subnet group
+  #     SubnetIds:
+  #       - !Ref PrivateSubnet1
+  #       - !Ref PrivateSubnet2
+  # RedisSecurityGroup:
+  #   Type: AWS::EC2::SecurityGroup
+  #   Properties:
+  #     VpcId: !Ref VPC
+  #     GroupDescription: Enable Redis access 
+  #     SecurityGroupIngress:
+  #       - IpProtocol: tcp
+  #         FromPort: 6379
+  #         ToPort: 6379
+  #         SourceSecurityGroupId: !Ref LambdaSecurityGroup
+  # LambdaSecurityGroup:
+  #   Type: AWS::EC2::SecurityGroup
+  #   Properties:
+  #     VpcId: !Ref VPC
+  #     GroupDescription: Enable Redis access
+  # VPC:
+  #   Type: AWS::EC2::VPC
+  #   Properties:
+  #     EnableDnsSupport: true
+  #     EnableDnsHostnames: true
+  #     CidrBlock: !FindInMap ['SubnetConfig', 'VPC', 'CIDR']
+  # PrivateSubnet1:
+  #   Type: AWS::EC2::Subnet
+  #   Properties:
+  #     AvailabilityZone: 
+  #       Fn::Select: 
+  #       - 0
+  #       - Fn::GetAZs: !Ref AWS::Region
+  #     VpcId: !Ref VPC
+  #     CidrBlock:  !FindInMap ['SubnetConfig', 'Private1', 'CIDR']
+  # PrivateSubnet2:
+  #   Type: AWS::EC2::Subnet
+  #   Properties:
+  #     AvailabilityZone: 
+  #       Fn::Select: 
+  #       - 1
+  #       - Fn::GetAZs: !Ref AWS::Region
+  #     VpcId: !Ref VPC
+  #     CidrBlock:  !FindInMap ['SubnetConfig', 'Private2', 'CIDR']
+  # LambdaSubnet1:
+  #   Type: AWS::EC2::Subnet
+  #   Properties:
+  #     AvailabilityZone: 
+  #       Fn::Select: 
+  #       - 0
+  #       - Fn::GetAZs: !Ref AWS::Region
+  #     VpcId: !Ref VPC
+  #     CidrBlock:  !FindInMap ['SubnetConfig', 'Lambda1', 'CIDR']
+  # LambdaSubnet2:
+    # Type: AWS::EC2::Subnet
+    # Properties:
+    #   AvailabilityZone: 
+    #     Fn::Select: 
+    #     - 1
+    #     - Fn::GetAZs: !Ref AWS::Region
+    #   VpcId: !Ref VPC
+    #   CidrBlock:  !FindInMap ['SubnetConfig', 'Lambda2', 'CIDR']
+  rPlaceSocketAPI:
+    Type: 'AWS::ApiGatewayV2::Api'
+    Properties:
+      Name: rPlaceSocketAPI
+      ProtocolType: WEBSOCKET
+      RouteSelectionExpression: $request.body.action
+      ApiKeySelectionExpression: $request.header.x-api-key
+  ConnectRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref rPlaceSocketAPI
+      RouteKey: '$connect'
+      AuthorizationType: NONE
+      Target: !Join
+        - /
+        - - integrations
+          - !Ref ConnectIntegration
+  DisconnectRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref rPlaceSocketAPI
+      RouteKey: '$disconnect'
+      AuthorizationType: NONE
+      Target: !Join
+        - /
+        - - integrations
+          - !Ref DisconnectIntegration
+  DefaultRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref rPlaceSocketAPI
+      RouteKey: '$default'
+      AuthorizationType: NONE
+      Target: !Join
+        - /
+        - - integrations
+          - !Ref DefaultIntegration
+  UpdateRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref rPlaceSocketAPI
+      RouteKey: 'sendupdate'
+      AuthorizationType: NONE
+      Target: !Join
+        - /
+        - - integrations
+          - !Ref UpdateIntegration
+  ConnectIntegration:
+    Type: 'AWS::ApiGatewayV2::Integration'
+    Properties:
+      ApiId: !Ref rPlaceSocketAPI
+      Description: Lambda Integration
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Join
+        - ''
+        - - 'arn:'
+          - !Ref 'AWS::Partition'
+          - ':apigateway:'
+          - !Ref 'AWS::Region'
+          - ':lambda:path/2015-03-31/functions/'
+          - !GetAtt ConnectHandler.Arn
+          - /invocations
+  DisconnectIntegration:
+    Type: 'AWS::ApiGatewayV2::Integration'
+    Properties:
+      ApiId: !Ref rPlaceSocketAPI
+      Description: Lambda Integration
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Join
+        - ''
+        - - 'arn:'
+          - !Ref 'AWS::Partition'
+          - ':apigateway:'
+          - !Ref 'AWS::Region'
+          - ':lambda:path/2015-03-31/functions/'
+          - !GetAtt DisconnectHandler.Arn
+          - /invocations
+  DefaultIntegration:
+    Type: 'AWS::ApiGatewayV2::Integration'
+    Properties:
+      ApiId: !Ref rPlaceSocketAPI
+      Description: Lambda Integration
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Join
+        - ''
+        - - 'arn:'
+          - !Ref 'AWS::Partition'
+          - ':apigateway:'
+          - !Ref 'AWS::Region'
+          - ':lambda:path/2015-03-31/functions/'
+          - !GetAtt DefaultHandler.Arn
+          - /invocations
+  UpdateIntegration:
+    Type: 'AWS::ApiGatewayV2::Integration'
+    Properties:
+      ApiId: !Ref rPlaceSocketAPI
+      Description: Lambda Integration
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Join
+        - ''
+        - - 'arn:'
+          - !Ref 'AWS::Partition'
+          - ':apigateway:'
+          - !Ref 'AWS::Region'
+          - ':lambda:path/2015-03-31/functions/'
+          - !GetAtt SendMessageHandler.Arn
+          - /invocations
+  SocketDeployment:
+    Type: 'AWS::ApiGatewayV2::Deployment'
+    DependsOn:
+      - ConnectRoute
+      - DisconnectRoute
+      - DefaultRoute
+      - UpdateRoute
+    Properties:
+      Description: My deployment
+      ApiId: !Ref rPlaceSocketAPI
+  SocketStage:
+    Type: 'AWS::ApiGatewayV2::Stage'
+    Properties:
+      StageName: Prod
+      Description: Prod Stage
+      DeploymentId: !Ref SocketDeployment
+      ApiId: !Ref rPlaceSocketAPI
+  rPlaceRestAPI:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: Lambda Proxy
+      Description: Lambda proxy using quick create
+      ProtocolType: HTTP
+      Target: !Join
+        - ''
+        - - 'arn:'
+          - !Ref 'AWS::Partition'
+          - ':apigateway:'
+          - !Ref 'AWS::Region'
+          - ':lambda:path/2015-03-31/functions/'
+          - !GetAtt BoardHandler.Arn
+          - /invocations
+  SubnetGroup:
+    Type: 'AWS::ElastiCache::SubnetGroup'
+    Properties:
+      Description: Cache Subnet Group
+      SubnetIds:
+        - !Ref Subnet1
+        - !Ref Subnet2 
+  # myReplicationGroup:
+  #   Type: 'AWS::ElastiCache::ReplicationGroup'
+  #   Properties:
+  #     ReplicationGroupDescription: my description
+  #     NumCacheClusters: '0'
+  #     Engine: redis
+  #     CacheNodeType: cache.t3.micro   
+  #     AutomaticFailoverEnabled: 'true'
+  #     CacheSubnetGroupName: !Ref SubnetGroup
+  #     EngineVersion: 7.0
+  #     SecurityGroupIds:
+  #     - !Ref RedisSecurityGroup
+  RedisSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref myVPC
+      GroupDescription: Enable Redis access 
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 6379
+          ToPort: 6379
+          SourceSecurityGroupId: !Ref InstanceSecurityGroup
+  Subnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:
+        Ref: myVPC
+      CidrBlock: 10.0.1.0/24
+      AvailabilityZone: "us-east-1a"
+  Subnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:
+        Ref: myVPC
+      CidrBlock: 10.0.0.0/24
+      AvailabilityZone: "us-east-1b"
+  myVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsSupport: 'true'
+      EnableDnsHostnames: 'true'
+  InstanceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow inbound traffic to redis
+      VpcId: 
+        Ref: myVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 6379
+          ToPort: 6379
+          CidrIp: 0.0.0.0/0
+  permissionForURLInvokeUpdateBoard:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref updateBoard
+      FunctionUrlAuthType: 'NONE'
+      Action: lambda:InvokeFunctionUrl
+      Principal: '*'
+  permissionForURLInvokeSendMessage:
+     Type: AWS::Lambda::Permission
+     Properties:
+       FunctionName: !Ref SendMessageHandler
+       FunctionUrlAuthType: 'NONE'
+       Action: lambda:InvokeFunctionUrl
+       Principal: '*'
+  permissionForURLInvokeConnectHandler:
+     Type: AWS::Lambda::Permission
+     Properties:
+       FunctionName: !Ref ConnectHandler
+       FunctionUrlAuthType: 'NONE'
+       Action: lambda:InvokeFunctionUrl
+       Principal: '*'
+  permissionForURLInvokeDisconnectHandler:
+     Type: AWS::Lambda::Permission
+     Properties:
+       FunctionName: !Ref DisconnectHandler
+       FunctionUrlAuthType: 'NONE'
+       Action: lambda:InvokeFunctionUrl
+       Principal: '*'
+  permissionForURLInvokeDefaultHandler:
+     Type: AWS::Lambda::Permission
+     Properties:
+       FunctionName: !Ref DefaultHandler
+       FunctionUrlAuthType: 'NONE'
+       Action: lambda:InvokeFunctionUrl
+       Principal: '*'
+  permissionForURLInvokeBoardHandler:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref BoardHandler
+      FunctionUrlAuthType: 'NONE'
+      Action: lambda:InvokeFunctionUrl
+      Principal: '*'
