@@ -1,5 +1,7 @@
 # r-place
 
+![Demo](./rplace.png)
+
 We recreated Reddit's famous April Fools event called r/place where individuals around the world can contribute one pixel every 5 minutes onto a shared canvas. 
 
 ## Getting Started:
